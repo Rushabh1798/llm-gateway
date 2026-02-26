@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from llm_gateway.config import GatewayConfig
-from llm_gateway.exceptions import ProviderNotFoundError
+from llm_gateway.exceptions import ProviderInitError, ProviderNotFoundError
 from llm_gateway.registry import (
     _PROVIDERS,
     build_provider,
@@ -44,3 +44,21 @@ class TestRegistry:
         providers = list_providers()
         assert isinstance(providers, list)
         # At minimum, anthropic should be available if installed
+
+    def test_factory_error_raises_provider_init_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ProviderInitError raised when factory function throws."""
+
+        def bad_factory(config: GatewayConfig) -> None:
+            raise RuntimeError("factory exploded")
+
+        register_provider("broken_provider", bad_factory)  # type: ignore[arg-type]
+
+        monkeypatch.setenv("LLM_PROVIDER", "broken_provider")
+        config = GatewayConfig()
+        with pytest.raises(ProviderInitError, match="broken_provider"):
+            build_provider(config)
+
+        # Cleanup
+        _PROVIDERS.pop("broken_provider", None)

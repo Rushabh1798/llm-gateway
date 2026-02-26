@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import shutil
 import time
 from collections.abc import Sequence
@@ -106,6 +107,10 @@ class LocalClaudeProvider:
     async def _run_cli(self, prompt: str) -> str:
         """Execute the claude CLI and return stdout."""
         assert self._claude_path is not None
+
+        # Strip CLAUDECODE env var to allow running inside a Claude Code session
+        env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+
         proc = await asyncio.create_subprocess_exec(
             self._claude_path,
             "-p",
@@ -116,6 +121,7 @@ class LocalClaudeProvider:
             "1",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=env,
         )
 
         try:

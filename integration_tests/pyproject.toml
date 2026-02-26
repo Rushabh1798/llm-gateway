@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "llm-gateway-integration-tests"
+version = "0.1.0"
+description = "Independent integration test suite that consumes llm-gateway as a git dependency."
+requires-python = ">=3.11"
+dependencies = [
+    # ── llm-gateway installed via git SHA ────────────────────────
+    # When using a remote repo, replace with:
+    #   "llm-gateway @ git+https://github.com/YOUR_ORG/llm-gateway.git@<COMMIT_SHA>"
+    #
+    # For local development against the repo on disk:
+    "llm-gateway @ file:///Users/rushabhthakkar/Desktop/workspace/projects/llm-gateway",
+
+    # ── Test framework ───────────────────────────────────────────
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "pydantic>=2.0",
+]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "dry_run: tests with mocked LLM providers (no real calls)",
+    "live: tests that call real LLM providers (requires claude CLI)",
+]
+# By default, run dry_run tests only. Pass --run-live to include live tests.
+addopts = "-m dry_run"

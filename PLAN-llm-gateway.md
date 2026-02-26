@@ -1,5 +1,15 @@
 # PLAN: llm-gateway — Production-Ready, Vendor-Agnostic LLM Gateway
 
+> **Status: COMPLETE** — All phases (0–12) implemented and verified.
+>
+> Post-plan additions:
+> - `integration_tests/` — Independent consumer project with 22 dry-run + 10 live tests
+> - `LocalClaudeProvider` fix: strips `CLAUDECODE` env var for nested CLI sessions
+> - Live test suite summary: tracks CLI sessions, tokens, and cost across test runs
+> - Pre-commit hooks mirror CI pipeline (ruff, mypy, unit tests, integration dry-run)
+>
+> See `CLAUDE.md` for current project context and `CHANGELOG.md` for full change history.
+
 > **Purpose**: Standalone, open-source Python package that abstracts all LLM
 > interactions behind a unified, config-driven interface. Consumers import ONE
 > class (`LLMClient`), configure via `.env`, and switch providers (Anthropic,

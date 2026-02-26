@@ -9,7 +9,9 @@ from llm_gateway.exceptions import (
     CostLimitExceededError,
     GatewayError,
     ProviderError,
+    ProviderInitError,
     ProviderNotFoundError,
+    ResponseValidationError,
 )
 
 
@@ -31,3 +33,29 @@ class TestExceptions:
         assert exc.current == 5.0
         assert exc.limit == 3.0
         assert "$5.0" in str(exc) or "5.0000" in str(exc)
+
+    def test_provider_init_error(self) -> None:
+        exc = ProviderInitError("anthropic", "missing API key")
+        assert exc.provider == "anthropic"
+        assert "anthropic" in str(exc)
+        assert "missing API key" in str(exc)
+
+    def test_provider_error(self) -> None:
+        original = RuntimeError("connection timeout")
+        exc = ProviderError("openai", original)
+        assert exc.provider == "openai"
+        assert exc.original is original
+        assert "openai" in str(exc)
+        assert "connection timeout" in str(exc)
+
+    def test_response_validation_error(self) -> None:
+        exc = ResponseValidationError("MyModel", "field 'name' is required")
+        assert exc.model_name == "MyModel"
+        assert "MyModel" in str(exc)
+        assert "field 'name' is required" in str(exc)
+
+    def test_cli_not_found_error(self) -> None:
+        exc = CLINotFoundError()
+        assert exc.provider == "local_claude"
+        assert isinstance(exc.original, FileNotFoundError)
+        assert "claude" in str(exc).lower()

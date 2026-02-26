@@ -14,3 +14,27 @@ repos:
       - id: ruff
         args: ["--fix"]
       - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: mypy .
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: pytest-unit
+        name: unit tests
+        entry: pytest -m unit -q --no-header
+        language: system
+        types: [python]
+        pass_filenames: false
+        always_run: true
+
+      - id: pytest-integration-dry-run
+        name: integration tests (dry-run)
+        entry: bash -c 'cd integration_tests && python -m pytest -m dry_run -q --no-header'
+        language: system
+        pass_filenames: false
+        always_run: true

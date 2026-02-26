@@ -18,6 +18,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Structured logging via structlog
 - Provider registry with lazy loading
 - `FakeLLMProvider` for testing
-- Full test suite (unit + integration)
-- CI/CD with GitHub Actions
-- MkDocs documentation
+- Full unit test suite (39 tests, 82%+ coverage)
+- Integration test suite as independent consumer project (`integration_tests/`)
+  - 22 dry-run tests (mocked, no real LLM calls)
+  - 10 live tests (real Claude CLI calls with structured output validation)
+  - Live test suite summary: CLI sessions, token usage, cost estimation
+- CI/CD with GitHub Actions (lint, unit tests, integration tests, minimal-deps)
+- Pre-commit hooks mirroring CI (ruff, mypy, unit tests, integration dry-run)
+- Git dependency support (install via commit SHA)
+- MkDocs documentation stubs
+
+### Fixed
+- `LocalClaudeProvider` strips `CLAUDECODE` env var to allow nested CLI sessions

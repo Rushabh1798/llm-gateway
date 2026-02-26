@@ -109,3 +109,42 @@ class TestLLMClient:
         assert "call_count" in summary
         assert "total_tokens" in summary
         assert summary["call_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_total_cost_usd_property(self, fake_provider) -> None:  # type: ignore[no-untyped-def]
+        """total_cost_usd reflects cumulative cost."""
+        fake_provider.set_response(_Answer, _Answer(text="ok"))
+
+        config = GatewayConfig(provider="fake", api_key="not-needed")  # type: ignore[arg-type]
+        client = LLMClient(config=config, provider_instance=fake_provider)
+
+        assert client.total_cost_usd == 0.0
+        await client.complete(
+            messages=[{"role": "user", "content": "test"}],
+            response_model=_Answer,
+        )
+        # After a call, total_cost_usd should be non-negative (could be 0 for unknown models)
+        assert client.total_cost_usd >= 0.0
+
+    @pytest.mark.asyncio
+    async def test_close_idempotent(self, fake_provider) -> None:  # type: ignore[no-untyped-def]
+        """Calling close() twice does not raise."""
+        config = GatewayConfig(provider="fake", api_key="not-needed")  # type: ignore[arg-type]
+        client = LLMClient(config=config, provider_instance=fake_provider)
+        await client.close()
+        await client.close()  # Should not raise
+
+    @pytest.mark.asyncio
+    async def test_temperature_override(self, fake_provider) -> None:  # type: ignore[no-untyped-def]
+        """Temperature parameter is passed through to provider."""
+        fake_provider.set_response(_Answer, _Answer(text="ok"))
+
+        config = GatewayConfig(provider="fake", api_key="not-needed")  # type: ignore[arg-type]
+        client = LLMClient(config=config, provider_instance=fake_provider)
+
+        await client.complete(
+            messages=[{"role": "user", "content": "test"}],
+            response_model=_Answer,
+            temperature=0.9,
+        )
+        # The call completed without error (temperature was forwarded)

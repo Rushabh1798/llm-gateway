@@ -1,7 +1,6 @@
 # llm-gateway
 
 [![CI](https://github.com/YOUR_ORG/llm-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_ORG/llm-gateway/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/llm-gateway)](https://pypi.org/project/llm-gateway/)
 [![Python](https://img.shields.io/pypi/pyversions/llm-gateway)](https://pypi.org/project/llm-gateway/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -9,7 +8,7 @@
 
 ## Features
 
-- **Zero-code provider switching** — Change `LLM_PROVIDER` in `.env`, restart. Done.
+- **Zero-code provider switching** — Change `LLM_PROVIDER` env var, restart. Done.
 - **Structured output** — Every call returns a validated Pydantic model via `response_model`.
 - **Built-in cost tracking** — Token usage and USD cost on every response; configurable guardrails.
 - **Observability** — OpenTelemetry spans per LLM call with model, tokens, cost, latency attributes.
@@ -36,11 +35,35 @@ async def main():
         messages=[{"role": "user", "content": "What is 2+2?"}],
         response_model=Answer,
     )
-    print(resp.content.text)        # "4"
+    print(resp.content.text)          # "4"
     print(resp.usage.total_cost_usd)  # 0.000123
     await llm.close()
 
 asyncio.run(main())
+```
+
+## Installation
+
+### As a PyPI package
+
+```bash
+pip install llm-gateway                     # core only
+pip install 'llm-gateway[anthropic]'        # + Anthropic provider
+pip install 'llm-gateway[all]'              # all optional deps
+```
+
+### As a git dependency
+
+Pin to a specific commit SHA for reproducible builds:
+
+```
+# requirements.txt
+llm-gateway @ git+https://github.com/YOUR_ORG/llm-gateway.git@<COMMIT_SHA>
+
+# pyproject.toml (PEP 621)
+dependencies = [
+    "llm-gateway @ git+https://github.com/YOUR_ORG/llm-gateway.git@<COMMIT_SHA>",
+]
 ```
 
 ## Configuration
@@ -49,9 +72,9 @@ All settings use the `LLM_` prefix and are read from environment variables or `.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LLM_PROVIDER` | `anthropic` | Provider: `anthropic`, `local_claude`, `openai` |
+| `LLM_PROVIDER` | `anthropic` | `anthropic`, `local_claude`, or custom |
 | `LLM_MODEL` | `claude-sonnet-4-5-20250514` | Model identifier |
-| `LLM_API_KEY` | — | API key (falls back to `ANTHROPIC_API_KEY` etc.) |
+| `LLM_API_KEY` | — | API key (falls back to `ANTHROPIC_API_KEY`) |
 | `LLM_MAX_TOKENS` | `4096` | Max response tokens |
 | `LLM_MAX_RETRIES` | `3` | Retry attempts |
 | `LLM_TIMEOUT_SECONDS` | `120` | Request timeout |
@@ -68,25 +91,22 @@ All settings use the `LLM_` prefix and are read from environment variables or `.
 
 ```bash
 pip install 'llm-gateway[anthropic]'
-```
-
-```env
-LLM_PROVIDER=anthropic
-ANTHROPIC_API_KEY=sk-ant-...
+export ANTHROPIC_API_KEY=sk-ant-...
+export LLM_PROVIDER=anthropic
 ```
 
 ### Local Claude CLI
 
 Use the Claude Code CLI for local inference — no API key needed:
 
-```env
-LLM_PROVIDER=local_claude
+```bash
+export LLM_PROVIDER=local_claude
 ```
 
-### Adding a Custom Provider
+### Custom Provider
 
 ```python
-from llm_gateway import register_provider, LLMProvider
+from llm_gateway import register_provider
 
 class MyProvider:
     async def complete(self, messages, response_model, model, **kwargs):
@@ -111,6 +131,77 @@ print(resp.usage.total_cost_usd)  # 0.000654
 print(llm.total_cost_usd)  # 0.001234
 print(llm.cost_summary())  # {"total_tokens": ..., "total_cost_usd": ..., ...}
 ```
+
+## Development
+
+```bash
+git clone https://github.com/YOUR_ORG/llm-gateway.git
+cd llm-gateway
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+pre-commit install
+```
+
+### Running checks
+
+```bash
+ruff check .                      # lint
+ruff format --check .             # format check
+mypy .                            # type check
+pytest -m unit -v                 # unit tests (39 tests, 82%+ coverage)
+```
+
+### Integration tests
+
+The `integration_tests/` directory is a self-contained Python project that installs llm-gateway as an external dependency — validating the package works as consumers would use it.
+
+```bash
+cd integration_tests
+pip install -e .                  # install with llm-gateway as dependency
+
+# Dry-run (mocked, no real LLM calls — default)
+pytest -v
+
+# Live (real Claude CLI calls — requires `claude` in PATH)
+pytest --run-live -m live -v
+```
+
+Live runs print a session summary:
+
+```
+========================= Live Test Suite Summary =========================
+  Claude CLI calls      : 11
+  Total tokens (est.)   : 1,794  (1,555 input + 239 output)
+  Cost estimation       : $0.000000
+                          (local_claude — no API fees)
+===========================================================================
+```
+
+### Pre-commit hooks
+
+Pre-commit mirrors the CI pipeline on every commit:
+
+- Trailing whitespace and EOF fixes
+- Ruff lint + format
+- Mypy strict type checking
+- Unit tests
+- Integration tests (dry-run)
+
+```bash
+pre-commit install                # set up hooks
+pre-commit run --all-files        # manual run
+```
+
+## CI
+
+GitHub Actions runs on every push and PR to `main`:
+
+| Job | What it does |
+|-----|--------------|
+| **lint** | ruff check, ruff format, mypy (Python 3.12) |
+| **test** | Unit tests on Python 3.11, 3.12, 3.13 with coverage |
+| **integration-test** | Installs llm-gateway as a package, runs dry-run integration tests |
+| **test-minimal** | Verifies core imports work without optional extras |
 
 ## License
 

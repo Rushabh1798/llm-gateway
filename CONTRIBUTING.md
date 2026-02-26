@@ -10,13 +10,38 @@ pip install -e ".[dev]"
 pre-commit install
 ```
 
+For integration tests (optional):
+
+```bash
+cd integration_tests
+pip install -e .
+```
+
 ## Testing
 
 ```bash
-pytest -m unit            # Fast, fully mocked
-pytest -m integration     # Requires API keys
-pytest --cov=src          # With coverage
+# Unit tests (39 tests, fast, fully mocked)
+pytest -m unit -v
+
+# Integration tests — dry-run (22 tests, mocked, no real LLM calls)
+cd integration_tests && pytest -v
+
+# Integration tests — live (10 tests, requires `claude` CLI in PATH)
+cd integration_tests && pytest --run-live -m live -v
+
+# Unit tests with coverage
+pytest -m unit --cov=src --cov-report=term-missing -v
 ```
+
+## Pre-commit
+
+Pre-commit hooks mirror the CI pipeline. They run automatically on `git commit`:
+
+```bash
+pre-commit run --all-files        # manual run
+```
+
+Hooks: trailing whitespace, EOF fixer, YAML check, ruff lint + format, mypy, unit tests, integration dry-run tests.
 
 ## Adding a Provider
 
@@ -33,4 +58,4 @@ pytest --cov=src          # With coverage
 - Python 3.11+, strict mypy, Ruff linting
 - All functions have type annotations and docstrings
 - No `print()` — use logging
-- Run `ruff check . && ruff format . && mypy .` before committing
+- Run `ruff check . && ruff format --check . && mypy .` before committing

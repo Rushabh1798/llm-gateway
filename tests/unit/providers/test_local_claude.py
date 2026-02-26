@@ -8,7 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import BaseModel
 
-from llm_gateway.exceptions import CLINotFoundError, ProviderError
+from llm_gateway.config import GatewayConfig
+from llm_gateway.exceptions import CLINotFoundError, ProviderError, ResponseValidationError
 from llm_gateway.types import LLMResponse
 
 
@@ -90,3 +91,118 @@ class TestLocalClaudeProvider:
         )
         assert "answer" in prompt
         assert "string" in prompt  # JSON schema type
+
+    def test_build_prompt_system_and_assistant_roles(self) -> None:
+        """Prompt formats system and assistant roles correctly."""
+        from llm_gateway.providers.local_claude import LocalClaudeProvider
+
+        with patch("shutil.which", return_value="/usr/bin/claude"):
+            provider = LocalClaudeProvider()
+
+        prompt = provider._build_prompt(
+            messages=[
+                {"role": "system", "content": "You are a helpful bot."},
+                {"role": "user", "content": "Hi there."},
+                {"role": "assistant", "content": "Hello!"},
+            ],
+            response_model=_TestModel,
+        )
+        assert "[System]: You are a helpful bot." in prompt
+        assert "[User]: Hi there." in prompt
+        assert "[Assistant]: Hello!" in prompt
+
+    def test_from_config_factory(self) -> None:
+        """from_config creates a provider with timeout from config."""
+        from llm_gateway.providers.local_claude import LocalClaudeProvider
+
+        with patch("shutil.which", return_value="/usr/bin/claude"):
+            config = GatewayConfig(provider="local_claude", timeout_seconds=300)
+            provider = LocalClaudeProvider.from_config(config)
+            assert provider._timeout == 300
+
+    def test_parse_response_valid_json(self) -> None:
+        """_parse_response parses valid JSON against response model."""
+        from llm_gateway.providers.local_claude import LocalClaudeProvider
+
+        result = LocalClaudeProvider._parse_response('{"answer": "42"}', _TestModel)
+        assert isinstance(result, _TestModel)
+        assert result.answer == "42"
+
+    def test_parse_response_markdown_code_block(self) -> None:
+        """_parse_response strips markdown code fences before parsing."""
+        from llm_gateway.providers.local_claude import LocalClaudeProvider
+
+        raw = '```json\n{"answer": "hello"}\n```'
+        result = LocalClaudeProvider._parse_response(raw, _TestModel)
+        assert isinstance(result, _TestModel)
+        assert result.answer == "hello"
+
+    def test_parse_response_invalid_json_raises(self) -> None:
+        """_parse_response raises ResponseValidationError on invalid JSON."""
+        from llm_gateway.providers.local_claude import LocalClaudeProvider
+
+        with pytest.raises(ResponseValidationError, match="_TestModel"):
+            LocalClaudeProvider._parse_response("not valid json", _TestModel)
+
+    @pytest.mark.asyncio
+    async def test_run_cli_nonzero_exit_raises(self) -> None:
+        """Non-zero exit code from CLI raises RuntimeError wrapped in ProviderError."""
+        from llm_gateway.providers.local_claude import LocalClaudeProvider
+
+        with patch("shutil.which", return_value="/usr/bin/claude"):
+            provider = LocalClaudeProvider()
+
+        mock_proc = AsyncMock()
+        mock_proc.communicate = AsyncMock(return_value=(b"", b"some error"))
+        mock_proc.returncode = 1
+
+        with (
+            patch("asyncio.create_subprocess_exec", return_value=mock_proc),
+            pytest.raises(ProviderError, match="local_claude"),
+        ):
+            await provider.complete(
+                messages=[{"role": "user", "content": "test"}],
+                response_model=_TestModel,
+                model="local",
+            )
+
+    @pytest.mark.asyncio
+    async def test_run_cli_raw_text_fallback(self) -> None:
+        """Raw text output (not JSON wrapper) is used as-is for parsing."""
+        from llm_gateway.providers.local_claude import LocalClaudeProvider
+
+        with patch("shutil.which", return_value="/usr/bin/claude"):
+            provider = LocalClaudeProvider()
+
+        # Return raw JSON directly (no {"result": ...} wrapper)
+        raw_json = '{"answer": "direct"}'
+        mock_proc = AsyncMock()
+        mock_proc.communicate = AsyncMock(return_value=(raw_json.encode(), b""))
+        mock_proc.returncode = 0
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            resp = await provider.complete(
+                messages=[{"role": "user", "content": "test"}],
+                response_model=_TestModel,
+                model="local",
+            )
+        assert resp.content.answer == "direct"
+
+    @pytest.mark.asyncio
+    async def test_close_is_noop(self) -> None:
+        """close() completes without error."""
+        from llm_gateway.providers.local_claude import LocalClaudeProvider
+
+        with patch("shutil.which", return_value="/usr/bin/claude"):
+            provider = LocalClaudeProvider()
+        await provider.close()  # Should not raise
+
+    def test_estimate_usage_heuristic(self) -> None:
+        """_estimate_usage returns positive token counts with zero cost."""
+        from llm_gateway.providers.local_claude import LocalClaudeProvider
+
+        usage = LocalClaudeProvider._estimate_usage("hello world", '{"answer": "ok"}')
+        assert usage.input_tokens > 0
+        assert usage.output_tokens > 0
+        assert usage.input_cost_usd == 0.0
+        assert usage.output_cost_usd == 0.0
