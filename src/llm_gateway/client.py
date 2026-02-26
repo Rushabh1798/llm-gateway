@@ -96,7 +96,9 @@ class LLMClient:
         """
         effective_model = model or self._config.model
         effective_max_tokens = max_tokens or self._config.max_tokens
-        effective_temperature = temperature if temperature is not None else self._config.temperature
+        effective_temperature = (
+            temperature if temperature is not None else self._config.temperature
+        )
 
         async with traced_llm_call(
             model=effective_model,
@@ -154,7 +156,7 @@ class LLMClient:
             await self._provider.close()
             self._closed = True
 
-    async def __aenter__(self) -> "LLMClient":
+    async def __aenter__(self) -> LLMClient:
         """Async context manager entry."""
         return self
 

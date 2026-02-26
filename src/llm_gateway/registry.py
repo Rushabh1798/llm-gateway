@@ -15,12 +15,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Global registry: name → factory(config) → provider instance
-_PROVIDERS: dict[str, Callable[["GatewayConfig"], "LLMProvider"]] = {}
+_PROVIDERS: dict[str, Callable[[GatewayConfig], LLMProvider]] = {}
 
 
 def register_provider(
     name: str,
-    factory: Callable[["GatewayConfig"], "LLMProvider"],
+    factory: Callable[[GatewayConfig], LLMProvider],
 ) -> None:
     """Register a provider factory.
 
@@ -32,7 +32,7 @@ def register_provider(
     logger.debug("Registered LLM provider: %s", name)
 
 
-def build_provider(config: "GatewayConfig") -> "LLMProvider":
+def build_provider(config: GatewayConfig) -> LLMProvider:
     """Build a provider instance from configuration.
 
     Triggers lazy registration of built-in providers on first call.
@@ -77,7 +77,7 @@ def _ensure_builtins_registered() -> None:
     Import errors are caught — providers for uninstalled SDKs are simply
     not registered.
     """
-    global _builtins_registered  # noqa: PLW0603
+    global _builtins_registered
     if _builtins_registered:
         return
     _builtins_registered = True

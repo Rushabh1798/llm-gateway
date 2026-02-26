@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import BaseModel
 
-from llm_gateway.exceptions import CLINotFoundError
+from llm_gateway.exceptions import CLINotFoundError, ProviderError
 from llm_gateway.types import LLMResponse
 
 
@@ -37,9 +37,7 @@ class TestLocalClaudeProvider:
         json_output = json.dumps({"result": json.dumps({"answer": "world"})})
 
         mock_proc = AsyncMock()
-        mock_proc.communicate = AsyncMock(
-            return_value=(json_output.encode(), b"")
-        )
+        mock_proc.communicate = AsyncMock(return_value=(json_output.encode(), b""))
         mock_proc.returncode = 0
 
         with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
@@ -71,7 +69,7 @@ class TestLocalClaudeProvider:
         with (
             patch("asyncio.create_subprocess_exec", return_value=mock_proc),
             patch("asyncio.wait_for", side_effect=asyncio.TimeoutError),
-            pytest.raises(Exception),
+            pytest.raises(ProviderError),
         ):
             await provider.complete(
                 messages=[{"role": "user", "content": "hello"}],

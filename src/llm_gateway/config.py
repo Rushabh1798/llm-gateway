@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings
@@ -27,11 +26,11 @@ class GatewayConfig(BaseSettings):
         default="claude-sonnet-4-5-20250514",
         description="Model identifier passed to the provider.",
     )
-    api_key: Optional[SecretStr] = Field(
+    api_key: SecretStr | None = Field(
         default=None,
         description="API key. Falls back to provider-specific env vars if unset.",
     )
-    base_url: Optional[str] = Field(
+    base_url: str | None = Field(
         default=None,
         description="Optional base URL override for the provider API.",
     )
@@ -43,11 +42,11 @@ class GatewayConfig(BaseSettings):
     temperature: float = Field(default=0.0, ge=0.0, le=2.0)
 
     # ── Cost guardrails ─────────────────────────────────────────
-    cost_limit_usd: Optional[float] = Field(
+    cost_limit_usd: float | None = Field(
         default=None,
         description="Max cumulative cost (USD) per LLMClient instance. None = no limit.",
     )
-    cost_warn_usd: Optional[float] = Field(
+    cost_warn_usd: float | None = Field(
         default=None,
         description="Emit warning when cumulative cost exceeds this (USD).",
     )
@@ -68,7 +67,7 @@ class GatewayConfig(BaseSettings):
     )
 
     @model_validator(mode="after")
-    def _resolve_api_key(self) -> "GatewayConfig":
+    def _resolve_api_key(self) -> GatewayConfig:
         """Fall back to provider-specific env vars if LLM_API_KEY is unset."""
         if self.api_key is not None:
             return self

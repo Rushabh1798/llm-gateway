@@ -13,9 +13,8 @@ from llm_gateway.exceptions import ProviderError
 from llm_gateway.types import LLMMessage, LLMResponse, TokenUsage
 
 try:
-    from anthropic import AsyncAnthropic
-
     import instructor
+    from anthropic import AsyncAnthropic
 
     HAS_ANTHROPIC = True
 except ImportError:
@@ -52,7 +51,7 @@ class AnthropicProvider:
         self._max_retries = max_retries
 
     @classmethod
-    def from_config(cls, config: GatewayConfig) -> "AnthropicProvider":
+    def from_config(cls, config: GatewayConfig) -> AnthropicProvider:
         """Factory method for the provider registry."""
         return cls(
             api_key=config.get_api_key(),
@@ -78,11 +77,11 @@ class AnthropicProvider:
             reraise=True,
         )
         async def _do_call() -> T:
-            result: T = await self._instructor.messages.create(
+            result: T = await self._instructor.messages.create(  # type: ignore[type-var]
                 model=model,
                 max_tokens=max_tokens,
                 temperature=temperature,
-                messages=list(messages),
+                messages=list(messages),  # type: ignore[arg-type]
                 response_model=response_model,
             )
             return result

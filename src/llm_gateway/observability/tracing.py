@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from llm_gateway.types import LLMResponse
 
@@ -51,7 +51,7 @@ def configure_tracing(
         endpoint: OTLP collector endpoint (only used when exporter="otlp").
         service_name: Service name for spans.
     """
-    global _tracer  # noqa: PLW0603
+    global _tracer
 
     if exporter == "none" or not HAS_OTEL:
         _tracer = None
@@ -64,9 +64,7 @@ def configure_tracing(
         provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
     elif exporter == "otlp":
         if not HAS_OTLP:
-            logger.warning(
-                "OTLP exporter requested but opentelemetry-exporter-otlp not installed"
-            )
+            logger.warning("OTLP exporter requested but opentelemetry-exporter-otlp not installed")
             _tracer = None
             return
         provider.add_span_processor(
@@ -85,7 +83,7 @@ def get_tracer() -> Any:
 
 def disable_tracing() -> None:
     """Disable tracing (useful for tests)."""
-    global _tracer  # noqa: PLW0603
+    global _tracer
     _tracer = None
 
 

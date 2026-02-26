@@ -35,7 +35,7 @@ class LocalClaudeProvider:
             raise CLINotFoundError()
 
     @classmethod
-    def from_config(cls, config: GatewayConfig) -> "LocalClaudeProvider":
+    def from_config(cls, config: GatewayConfig) -> LocalClaudeProvider:
         """Factory method for the provider registry."""
         return cls(timeout_seconds=config.timeout_seconds)
 
@@ -79,9 +79,9 @@ class LocalClaudeProvider:
         parts: list[str] = []
 
         # System instruction with JSON schema
-        if issubclass(response_model, BaseModel):  # type: ignore[arg-type]
+        if issubclass(response_model, BaseModel):
             schema = json.dumps(
-                response_model.model_json_schema(),  # type: ignore[union-attr]
+                response_model.model_json_schema(),
                 indent=2,
             )
             parts.append(
@@ -105,12 +105,15 @@ class LocalClaudeProvider:
 
     async def _run_cli(self, prompt: str) -> str:
         """Execute the claude CLI and return stdout."""
-        assert self._claude_path is not None  # noqa: S101
+        assert self._claude_path is not None
         proc = await asyncio.create_subprocess_exec(
             self._claude_path,
-            "-p", prompt,
-            "--output-format", "json",
-            "--max-turns", "1",
+            "-p",
+            prompt,
+            "--output-format",
+            "json",
+            "--max-turns",
+            "1",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -120,7 +123,7 @@ class LocalClaudeProvider:
                 proc.communicate(),
                 timeout=self._timeout,
             )
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             proc.kill()
             msg = f"Claude CLI timed out after {self._timeout}s"
             raise TimeoutError(msg) from exc
@@ -163,12 +166,10 @@ class LocalClaudeProvider:
             cleaned = "\n".join(json_lines)
 
         try:
-            if issubclass(response_model, BaseModel):  # type: ignore[arg-type]
-                return response_model.model_validate_json(cleaned)  # type: ignore[union-attr,return-value]
+            if issubclass(response_model, BaseModel):
+                return response_model.model_validate_json(cleaned)  # type: ignore[return-value]
         except Exception as exc:
-            raise ResponseValidationError(
-                response_model.__name__, str(exc)
-            ) from exc
+            raise ResponseValidationError(response_model.__name__, str(exc)) from exc
 
         raise ResponseValidationError(
             response_model.__name__,

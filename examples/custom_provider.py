@@ -34,7 +34,7 @@ class EchoProvider:
         temperature: float = 0.0,
     ) -> LLMResponse[T]:
         last_msg = messages[-1]["content"] if messages else "empty"
-        content = response_model.model_validate({"text": f"Echo: {last_msg}"})  # type: ignore[union-attr]
+        content = response_model.model_validate({"text": f"Echo: {last_msg}"})  # type: ignore[attr-defined]
         return LLMResponse(
             content=content,
             usage=TokenUsage(input_tokens=len(str(messages)), output_tokens=len(str(content))),

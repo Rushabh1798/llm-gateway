@@ -26,28 +26,23 @@ from llm_gateway.registry import build_provider, list_providers, register_provid
 from llm_gateway.types import LLMMessage, LLMResponse, TokenUsage
 
 __all__ = [
-    # Core
-    "LLMClient",
-    "GatewayConfig",
-    # Types
-    "LLMResponse",
-    "LLMMessage",
-    "TokenUsage",
-    # Provider
-    "LLMProvider",
-    "register_provider",
-    "build_provider",
-    "list_providers",
-    # Cost
-    "CostTracker",
-    "calculate_cost",
-    "register_pricing",
-    # Exceptions
-    "GatewayError",
-    "ProviderNotFoundError",
-    "ProviderInitError",
-    "ProviderError",
-    "CostLimitExceededError",
-    "ResponseValidationError",
     "CLINotFoundError",
+    "CostLimitExceededError",
+    "CostTracker",
+    "GatewayConfig",
+    "GatewayError",
+    "LLMClient",
+    "LLMMessage",
+    "LLMProvider",
+    "LLMResponse",
+    "ProviderError",
+    "ProviderInitError",
+    "ProviderNotFoundError",
+    "ResponseValidationError",
+    "TokenUsage",
+    "build_provider",
+    "calculate_cost",
+    "list_providers",
+    "register_pricing",
+    "register_provider",
 ]

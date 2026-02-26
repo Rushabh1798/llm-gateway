@@ -16,7 +16,7 @@ async def main() -> None:
     """Run multiple calls with cost tracking."""
     config = GatewayConfig(
         cost_limit_usd=0.10,  # Hard limit: $0.10
-        cost_warn_usd=0.05,   # Warning at $0.05
+        cost_warn_usd=0.05,  # Warning at $0.05
     )
     async with LLMClient(config=config) as llm:
         for i in range(10):
@@ -25,7 +25,9 @@ async def main() -> None:
                     messages=[{"role": "user", "content": f"Summarize topic {i}"}],
                     response_model=Summary,
                 )
-                print(f"Call {i}: ${resp.usage.total_cost_usd:.6f} | Cumulative: ${llm.total_cost_usd:.6f}")
+                print(
+                    f"Call {i}: ${resp.usage.total_cost_usd:.6f} | Cumulative: ${llm.total_cost_usd:.6f}"
+                )
             except CostLimitExceededError as exc:
                 print(f"Cost limit reached after {llm.call_count} calls: {exc}")
                 break

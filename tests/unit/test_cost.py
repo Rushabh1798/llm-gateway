@@ -17,9 +17,7 @@ from llm_gateway.types import TokenUsage
 @pytest.mark.unit
 class TestCalculateCost:
     def test_known_model(self) -> None:
-        input_cost, output_cost = calculate_cost(
-            "claude-haiku-4-5-20251001", 1_000_000, 1_000_000
-        )
+        input_cost, output_cost = calculate_cost("claude-haiku-4-5-20251001", 1_000_000, 1_000_000)
         assert input_cost == pytest.approx(0.80)
         assert output_cost == pytest.approx(4.00)
 
@@ -50,10 +48,14 @@ class TestCostTracker:
     def test_accumulates(self) -> None:
         tracker = CostTracker()
         tracker.record(
-            TokenUsage(input_tokens=100, output_tokens=50, input_cost_usd=0.01, output_cost_usd=0.02)
+            TokenUsage(
+                input_tokens=100, output_tokens=50, input_cost_usd=0.01, output_cost_usd=0.02
+            )
         )
         tracker.record(
-            TokenUsage(input_tokens=200, output_tokens=100, input_cost_usd=0.02, output_cost_usd=0.04)
+            TokenUsage(
+                input_tokens=200, output_tokens=100, input_cost_usd=0.02, output_cost_usd=0.04
+            )
         )
         assert tracker.total_tokens == 450
         assert tracker.total_cost_usd == pytest.approx(0.09)

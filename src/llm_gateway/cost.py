@@ -41,9 +41,7 @@ def get_pricing(model: str) -> dict[str, float] | None:
     return _PRICING.get(model)
 
 
-def calculate_cost(
-    model: str, input_tokens: int, output_tokens: int
-) -> tuple[float, float]:
+def calculate_cost(model: str, input_tokens: int, output_tokens: int) -> tuple[float, float]:
     """Calculate USD cost for a given token count.
 
     Returns:
@@ -57,9 +55,7 @@ def calculate_cost(
     return input_cost, output_cost
 
 
-def build_token_usage(
-    model: str, input_tokens: int, output_tokens: int
-) -> TokenUsage:
+def build_token_usage(model: str, input_tokens: int, output_tokens: int) -> TokenUsage:
     """Build a TokenUsage with cost calculated from the pricing registry."""
     input_cost, output_cost = calculate_cost(model, input_tokens, output_tokens)
     return TokenUsage(
@@ -100,11 +96,7 @@ class CostTracker:
 
     def _check_guardrails(self) -> None:
         """Enforce cost warning and hard limit."""
-        if (
-            self._cost_warn
-            and not self._warned
-            and self._total_cost_usd >= self._cost_warn
-        ):
+        if self._cost_warn and not self._warned and self._total_cost_usd >= self._cost_warn:
             self._warned = True
             logger.warning(
                 "LLM cost warning threshold reached: $%.4f >= $%.4f",

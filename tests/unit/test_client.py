@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from llm_gateway.client import LLMClient
 from llm_gateway.config import GatewayConfig
 from llm_gateway.exceptions import CostLimitExceededError
-from llm_gateway.types import LLMResponse, TokenUsage
+from llm_gateway.types import TokenUsage
 
 
 class _Answer(BaseModel):
@@ -22,7 +22,7 @@ class TestLLMClient:
         """LLMClient.complete() returns the provider's response."""
         fake_provider.set_response(_Answer, _Answer(text="hello"))
 
-        config = GatewayConfig(provider="fake", api_key="not-needed")  # type: ignore[call-arg]
+        config = GatewayConfig(provider="fake", api_key="not-needed")  # type: ignore[arg-type]
         client = LLMClient(config=config, provider_instance=fake_provider)
 
         resp = await client.complete(
@@ -37,7 +37,7 @@ class TestLLMClient:
         """LLMClient accumulates cost across calls."""
         fake_provider.set_response(_Answer, _Answer(text="ok"))
 
-        config = GatewayConfig(provider="fake", api_key="not-needed")  # type: ignore[call-arg]
+        config = GatewayConfig(provider="fake", api_key="not-needed")  # type: ignore[arg-type]
         client = LLMClient(config=config, provider_instance=fake_provider)
 
         await client.complete(
@@ -54,7 +54,7 @@ class TestLLMClient:
 
         config = GatewayConfig(
             provider="fake",
-            api_key="not-needed",  # type: ignore[call-arg]
+            api_key="not-needed",  # type: ignore[arg-type]
             cost_limit_usd=0.0001,  # Very low limit
         )
         client = LLMClient(config=config, provider_instance=fake_provider)
@@ -73,7 +73,7 @@ class TestLLMClient:
 
         config = GatewayConfig(
             provider="fake",
-            api_key="not-needed",  # type: ignore[call-arg]
+            api_key="not-needed",  # type: ignore[arg-type]
             model="default-model",
         )
         client = LLMClient(config=config, provider_instance=fake_provider)
@@ -88,7 +88,7 @@ class TestLLMClient:
     @pytest.mark.asyncio
     async def test_context_manager(self, fake_provider) -> None:  # type: ignore[no-untyped-def]
         """Async context manager calls close()."""
-        config = GatewayConfig(provider="fake", api_key="not-needed")  # type: ignore[call-arg]
+        config = GatewayConfig(provider="fake", api_key="not-needed")  # type: ignore[arg-type]
         async with LLMClient(config=config, provider_instance=fake_provider) as client:
             assert client is not None
         # close() was called
@@ -98,7 +98,7 @@ class TestLLMClient:
         """cost_summary() returns dict with expected keys."""
         fake_provider.set_response(_Answer, _Answer(text="ok"))
 
-        config = GatewayConfig(provider="fake", api_key="not-needed")  # type: ignore[call-arg]
+        config = GatewayConfig(provider="fake", api_key="not-needed")  # type: ignore[arg-type]
         client = LLMClient(config=config, provider_instance=fake_provider)
 
         await client.complete(

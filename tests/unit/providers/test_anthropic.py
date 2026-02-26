@@ -88,7 +88,7 @@ class TestAnthropicProvider:
         ):
             config = GatewayConfig(
                 provider="anthropic",
-                api_key="test-key",  # type: ignore[call-arg]
+                api_key="test-key",  # type: ignore[arg-type]
             )
             provider = AnthropicProvider.from_config(config)
             assert isinstance(provider, AnthropicProvider)

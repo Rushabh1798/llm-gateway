@@ -9,7 +9,7 @@ import pytest
 
 from llm_gateway.config import GatewayConfig
 from llm_gateway.cost import build_token_usage
-from llm_gateway.types import LLMMessage, LLMResponse, TokenUsage
+from llm_gateway.types import LLMMessage, LLMResponse
 
 T = TypeVar("T")
 

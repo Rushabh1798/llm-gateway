@@ -30,7 +30,7 @@ def configure_logging(
         level: Log level string (DEBUG, INFO, WARNING, ERROR).
         fmt: Output format — "json" or "console".
     """
-    global _CONFIGURED  # noqa: PLW0603
+    global _CONFIGURED
     if _CONFIGURED:
         return
     _CONFIGURED = True
