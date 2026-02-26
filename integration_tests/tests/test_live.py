@@ -261,9 +261,9 @@ class TestLiveTranslation:
         assert len(resp.content.translation) > 0
         # The French translation should contain some expected words
         translation_lower = resp.content.translation.lower()
-        assert any(
-            word in translation_lower for word in ("bonjour", "bon matin", "comment")
-        ), f"Unexpected translation: {resp.content.translation}"
+        assert any(word in translation_lower for word in ("bonjour", "bon matin", "comment")), (
+            f"Unexpected translation: {resp.content.translation}"
+        )
         logger.info(
             "[LIVE] translation | '%s' (%s -> %s)",
             resp.content.translation,
