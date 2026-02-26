@@ -40,13 +40,13 @@ Consumer → LLMClient → Provider (via Registry) → LLM API / CLI
 
 | Suite | Location | Count | Command |
 |-------|----------|-------|---------|
-| Unit tests | `tests/unit/` | 39 | `pytest -m unit -v` |
+| Unit tests | `tests/unit/` | 79 | `pytest -m unit -v` |
 | Integration (dry-run) | `integration_tests/tests/test_dry_run.py` | 22 | `cd integration_tests && pytest -v` |
 | Integration (live) | `integration_tests/tests/test_live.py` | 10 | `cd integration_tests && pytest --run-live -m live -v` |
 
 Integration tests are an independent Python project under `integration_tests/` that installs llm-gateway as a dependency (not direct source import). In CI, llm-gateway is installed from the checkout; locally, it uses a `file://` reference.
 
-Live tests print a session summary: total Claude CLI calls, estimated tokens, and cost.
+Live tests stream DEBUG-level logs of full CLI interactions (prompt sent, raw response, parsed content, tokens, latency) and print a session summary at the end: total Claude CLI calls, estimated tokens, and cost.
 
 ## Key Decisions
 
@@ -55,6 +55,9 @@ Live tests print a session summary: total Claude CLI calls, estimated tokens, an
 3. **Integration test isolation**: `integration_tests/` has its own `pyproject.toml` and installs llm-gateway as a package dependency. This validates the public API surface and package installability.
 4. **Pre-commit mirrors CI**: Hooks run ruff, mypy, unit tests, and integration dry-run tests — same as the CI pipeline.
 5. **Optional heavy deps**: Anthropic SDK, OpenTelemetry, and structlog are optional extras. Core package has only pydantic, pydantic-settings, and tenacity.
+6. **Pinned dev tool versions**: `ruff~=0.12.0` and `mypy~=1.16.0` ensure consistent linting/type-checking across local, pre-commit, and CI (all Python versions).
+7. **`type: ignore[return-value]`** on `model_validate_json()` in `LocalClaudeProvider._parse_response()` — required for mypy cross-version compatibility since the generic `T` return confuses some mypy versions.
+8. **Live test logging guard**: `_configure_live_logging` fixture sets `gw_logging._CONFIGURED = True` to prevent `configure_logging()` from clearing pytest's `_LiveLoggingStreamHandler`, then sets root logger to DEBUG so provider logs stream live.
 
 ## Development Commands
 
