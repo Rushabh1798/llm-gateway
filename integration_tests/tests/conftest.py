@@ -5,6 +5,7 @@ Provides:
 - FakeLLMProvider for dry-run mode (fully mocked, no real calls)
 - Automatic provider selection: fake for dry-run, local_claude for live
 - LiveSessionStats for aggregating token usage and cost across live tests
+- Live log streaming (DEBUG level) when --run-live is active
 """
 
 from __future__ import annotations
@@ -64,12 +65,14 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    """Adjust markers so both dry_run and live run when --run-live is given."""
-    if config.getoption("--run-live"):
+    """Adjust markers and enable live log streaming when --run-live is given."""
+    if config.getoption("--run-live", default=False):
         # Remove the default '-m dry_run' so all tests (or the user's -m) run
         config.option.markexpr = config.option.markexpr or ""
         if config.option.markexpr == "dry_run":
             config.option.markexpr = ""
+        # Stream logs at DEBUG level during live test runs
+        config.option.log_cli_level = "DEBUG"
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
@@ -201,6 +204,25 @@ class FakeLLMProvider:
 # ─── Fixtures ────────────────────────────────────────────────────
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _configure_live_logging(request: pytest.FixtureRequest) -> None:
+    """Prevent gateway logging from clobbering pytest's live-log handler.
+
+    ``configure_logging()`` calls ``root.handlers.clear()`` which removes
+    pytest's ``_LiveLoggingStreamHandler``.  We mark it as already configured
+    so ``LLMClient.__init__`` skips the call, then set the root logger to
+    DEBUG so provider-level log records reach pytest's handler.
+    """
+    if not request.config.getoption("--run-live", default=False):
+        return
+    import logging as stdlib_logging
+
+    from llm_gateway.observability import logging as gw_logging
+
+    gw_logging._CONFIGURED = True
+    stdlib_logging.getLogger().setLevel(stdlib_logging.DEBUG)
+
+
 @pytest.fixture(scope="session")
 def live_session_stats() -> LiveSessionStats:
     """Session-scoped stats accumulator for live test runs."""
@@ -232,6 +254,7 @@ def make_live_client(
             timeout_seconds=timeout,
             trace_enabled=False,
             log_format="console",
+            log_level="DEBUG",
         )
         client = LLMClient(config=config)
         created.append(client)
@@ -274,5 +297,6 @@ def live_client() -> LLMClient | None:
         timeout_seconds=180,
         trace_enabled=False,
         log_format="console",
+        log_level="DEBUG",
     )
     return LLMClient(config=config)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import shutil
 import time
@@ -17,6 +18,8 @@ from llm_gateway.exceptions import CLINotFoundError, ProviderError, ResponseVali
 from llm_gateway.types import LLMMessage, LLMResponse, TokenUsage
 
 T = TypeVar("T")
+
+logger = logging.getLogger(__name__)
 
 # Rough estimate: 1 token ≈ 4 characters (for heuristic usage tracking)
 _CHARS_PER_TOKEN = 4
@@ -50,11 +53,19 @@ class LocalClaudeProvider:
     ) -> LLMResponse[T]:
         """Run claude CLI and parse structured output."""
         prompt = self._build_prompt(messages, response_model)
+        logger.debug(
+            "claude_cli_request | model=%s response_model=%s prompt_length=%d\n%s",
+            model,
+            response_model.__name__,
+            len(prompt),
+            prompt[:500],
+        )
         start = time.monotonic()
 
         try:
             stdout = await self._run_cli(prompt)
         except Exception as exc:
+            logger.error("claude_cli_error | %s: %s", type(exc).__name__, exc)
             raise ProviderError("local_claude", exc) from exc
 
         latency_ms = (time.monotonic() - start) * 1000
@@ -62,6 +73,19 @@ class LocalClaudeProvider:
         # Parse and validate the response
         content = self._parse_response(stdout, response_model)
         usage = self._estimate_usage(prompt, stdout)
+
+        if isinstance(content, BaseModel):
+            fields = content.model_dump()
+            reply = " | ".join(f"{k}={v}" for k, v in fields.items())
+        else:
+            reply = str(content)[:200]
+        logger.info(
+            "claude_cli_complete | latency=%.0fms tokens=%d+%d\n  -> %s",
+            latency_ms,
+            usage.input_tokens,
+            usage.output_tokens,
+            reply,
+        )
 
         return LLMResponse(
             content=content,
@@ -131,24 +155,38 @@ class LocalClaudeProvider:
             )
         except TimeoutError as exc:
             proc.kill()
+            logger.error("claude_cli_timeout | timeout=%ds", self._timeout)
             msg = f"Claude CLI timed out after {self._timeout}s"
             raise TimeoutError(msg) from exc
 
+        stdout_text = stdout_bytes.decode(errors="replace").strip()
+        stderr_text = stderr_bytes.decode(errors="replace").strip()
+
+        if stderr_text:
+            logger.warning("claude_cli_stderr | %s", stderr_text[:500])
+
         if proc.returncode != 0:
-            stderr_text = stderr_bytes.decode(errors="replace").strip()
             msg = f"Claude CLI exited with code {proc.returncode}: {stderr_text}"
             raise RuntimeError(msg)
-
-        stdout_text = stdout_bytes.decode(errors="replace").strip()
 
         # claude --output-format json wraps result in {"result": "...", ...}
         try:
             wrapper = json.loads(stdout_text)
             if isinstance(wrapper, dict) and "result" in wrapper:
-                return str(wrapper["result"])
+                result_text = str(wrapper["result"])
+                logger.debug(
+                    "claude_cli_raw_result | duration=%dms cost=$%.6f\n%s",
+                    wrapper.get("duration_ms", 0),
+                    wrapper.get("total_cost_usd", 0.0),
+                    result_text[:2000],
+                )
+                return result_text
         except (json.JSONDecodeError, TypeError):
             pass
 
+        logger.debug(
+            "claude_cli_raw_fallback | stdout_length=%d\n%s", len(stdout_text), stdout_text[:1000]
+        )
         return stdout_text
 
     @staticmethod

@@ -9,6 +9,7 @@ Requires: `claude` CLI installed and available in PATH.
 
 from __future__ import annotations
 
+import logging
 import shutil
 from typing import Any
 
@@ -25,6 +26,8 @@ from .response_models import (
     SummaryResult,
     TranslationResult,
 )
+
+logger = logging.getLogger(__name__)
 
 # Skip the entire module if claude CLI is not available
 pytestmark = [
@@ -56,7 +59,7 @@ class TestLiveBasicRoundTrip:
         assert isinstance(resp.content.greeting, str)
         assert len(resp.content.greeting) > 0
         assert resp.provider == "local_claude"
-        print(f"\n  [LIVE] Greeting: {resp.content.greeting}")
+        logger.info("[LIVE] simple_greeting | greeting=%s", resp.content.greeting)
 
     @pytest.mark.asyncio
     async def test_factual_question(self, make_live_client: Any) -> None:
@@ -76,7 +79,7 @@ class TestLiveBasicRoundTrip:
         assert isinstance(resp.content.answer, str)
         assert len(resp.content.answer) > 0
         # The answer should contain H2O or water-related content
-        print(f"\n  [LIVE] Fact answer: {resp.content.answer}")
+        logger.info("[LIVE] factual_question | answer=%s", resp.content.answer)
 
 
 # ─── Multi-Field Schema Validation ───────────────────────────────
@@ -105,7 +108,9 @@ class TestLiveMultiFieldSchemas:
         assert len(resp.content.capital) > 0
         # The capital of Japan should be Tokyo
         assert "tokyo" in resp.content.capital.lower()
-        print(f"\n  [LIVE] Capital: {resp.content.country} → {resp.content.capital}")
+        logger.info(
+            "[LIVE] capital_city_lookup | %s -> %s", resp.content.country, resp.content.capital
+        )
 
     @pytest.mark.asyncio
     async def test_sentiment_analysis(self, make_live_client: Any) -> None:
@@ -127,7 +132,11 @@ class TestLiveMultiFieldSchemas:
         assert isinstance(resp.content, SentimentResult)
         assert isinstance(resp.content.sentiment, str)
         assert resp.content.sentiment.lower() in ("positive", "very positive", "strongly positive")
-        print(f"\n  [LIVE] Sentiment: '{resp.content.text[:50]}...' → {resp.content.sentiment}")
+        logger.info(
+            "[LIVE] sentiment_analysis | '%s...' -> %s",
+            resp.content.text[:50],
+            resp.content.sentiment,
+        )
 
     @pytest.mark.asyncio
     async def test_math_with_explanation(self, make_live_client: Any) -> None:
@@ -149,7 +158,11 @@ class TestLiveMultiFieldSchemas:
         assert len(resp.content.explanation) > 0
         # The answer should contain 105
         assert "105" in resp.content.answer
-        print(f"\n  [LIVE] Math: {resp.content.answer} — {resp.content.explanation[:80]}")
+        logger.info(
+            "[LIVE] math_with_explanation | %s — %s",
+            resp.content.answer,
+            resp.content.explanation[:80],
+        )
 
 
 # ─── Token Usage & Cost Tracking ─────────────────────────────────
@@ -174,7 +187,11 @@ class TestLiveUsageTracking:
         # Local claude has zero cost (no API fees)
         assert resp.usage.input_cost_usd == 0.0
         assert resp.usage.output_cost_usd == 0.0
-        print(f"\n  [LIVE] Usage: {resp.usage.input_tokens} in / {resp.usage.output_tokens} out")
+        logger.info(
+            "[LIVE] usage_positive_tokens | %d in / %d out",
+            resp.usage.input_tokens,
+            resp.usage.output_tokens,
+        )
 
     @pytest.mark.asyncio
     async def test_latency_is_measured(self, make_live_client: Any) -> None:
@@ -186,7 +203,7 @@ class TestLiveUsageTracking:
             )
 
         assert resp.latency_ms > 0
-        print(f"\n  [LIVE] Latency: {resp.latency_ms:.0f}ms")
+        logger.info("[LIVE] latency_measured | %.0fms", resp.latency_ms)
 
     @pytest.mark.asyncio
     async def test_multi_call_cost_accumulates(self, make_live_client: Any) -> None:
@@ -209,7 +226,11 @@ class TestLiveUsageTracking:
         summary = client.cost_summary()
         assert summary["call_count"] == 2
         assert summary["total_tokens"] > 0
-        print(f"\n  [LIVE] After 2 calls: {summary}")
+        logger.info(
+            "[LIVE] multi_call_cost | calls=%d total_tokens=%d",
+            summary["call_count"],
+            summary["total_tokens"],
+        )
 
 
 # ─── Translation (Complex Prompt) ────────────────────────────────
@@ -243,9 +264,11 @@ class TestLiveTranslation:
         assert any(
             word in translation_lower for word in ("bonjour", "bon matin", "comment")
         ), f"Unexpected translation: {resp.content.translation}"
-        print(
-            f"\n  [LIVE] Translation: '{resp.content.translation}' "
-            f"({resp.content.source_language} → {resp.content.target_language})"
+        logger.info(
+            "[LIVE] translation | '%s' (%s -> %s)",
+            resp.content.translation,
+            resp.content.source_language,
+            resp.content.target_language,
         )
 
 
@@ -282,4 +305,4 @@ class TestLiveSummarization:
         assert len(resp.content.summary) > 0
         # Summary should be shorter than the original
         assert len(resp.content.summary) < len(long_text)
-        print(f"\n  [LIVE] Summary: {resp.content.summary}")
+        logger.info("[LIVE] summarization | %s", resp.content.summary)
