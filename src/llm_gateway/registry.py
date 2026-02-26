@@ -105,3 +105,8 @@ def _ensure_builtins_registered() -> None:
         register_provider("openai", OpenAIProvider.from_config)
     except ImportError:
         logger.debug("openai extras not installed — provider not available")
+
+    # Fake (testing) — always available, no optional deps
+    from llm_gateway.testing import FakeLLMProvider
+
+    register_provider("fake", FakeLLMProvider.from_config)

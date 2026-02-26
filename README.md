@@ -72,7 +72,7 @@ All settings use the `LLM_` prefix and are read from environment variables or `.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LLM_PROVIDER` | `anthropic` | `anthropic`, `local_claude`, or custom |
+| `LLM_PROVIDER` | `anthropic` | `anthropic`, `local_claude`, `fake`, or custom |
 | `LLM_MODEL` | `claude-sonnet-4-5-20250514` | Model identifier |
 | `LLM_API_KEY` | — | API key (falls back to `ANTHROPIC_API_KEY`) |
 | `LLM_MAX_TOKENS` | `4096` | Max response tokens |
@@ -131,6 +131,49 @@ print(resp.usage.total_cost_usd)  # 0.000654
 print(llm.total_cost_usd)  # 0.001234
 print(llm.cost_summary())  # {"total_tokens": ..., "total_cost_usd": ..., ...}
 ```
+
+## Testing
+
+llm-gateway ships a `FakeLLMProvider` for use in consumer test suites:
+
+```python
+from llm_gateway import LLMClient, FakeLLMProvider
+from pydantic import BaseModel
+
+class Answer(BaseModel):
+    text: str
+
+# Pre-configured responses
+fake = FakeLLMProvider()
+fake.set_response(Answer, Answer(text="42"))
+
+async with LLMClient(provider_instance=fake) as client:
+    resp = await client.complete(
+        messages=[{"role": "user", "content": "What is 6*7?"}],
+        response_model=Answer,
+    )
+    assert resp.content.text == "42"
+    assert fake.call_count == 1
+
+# Or use via env var: LLM_PROVIDER=fake
+```
+
+You can also pass a `response_factory` for dynamic responses:
+
+```python
+def my_factory(response_model, messages):
+    return response_model(text="dynamic response")
+
+fake = FakeLLMProvider(response_factory=my_factory)
+```
+
+### Providers
+
+| Provider | Config Value | Auth | Use Case |
+|----------|-------------|------|----------|
+| Anthropic | `anthropic` | `LLM_API_KEY` | Production |
+| Local Claude CLI | `local_claude` | None | Free local dev |
+| Fake (testing) | `fake` | None | Unit/integration tests |
 
 ## Development
 

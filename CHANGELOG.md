@@ -7,6 +7,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- `FakeLLMProvider` shipped as public testing utility (`llm_gateway.testing`)
+- `fake` provider registered in provider registry (`LLM_PROVIDER=fake`)
+- `FakeCall` dataclass for inspecting recorded calls in tests
 - Initial release
 - `LLMClient` with config-driven provider selection
 - `AnthropicProvider` — Anthropic API via instructor
