@@ -9,7 +9,7 @@ import os
 import shutil
 import time
 from collections.abc import Sequence
-from typing import TypeVar, cast
+from typing import TypeVar
 
 from pydantic import BaseModel
 
@@ -211,7 +211,7 @@ class LocalClaudeProvider:
 
         try:
             if issubclass(response_model, BaseModel):
-                return cast(T, response_model.model_validate_json(cleaned))
+                return response_model.model_validate_json(cleaned)  # type: ignore[return-value]
         except Exception as exc:
             raise ResponseValidationError(response_model.__name__, str(exc)) from exc
 
