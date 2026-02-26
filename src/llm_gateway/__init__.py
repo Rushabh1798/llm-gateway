@@ -23,12 +23,15 @@ from llm_gateway.exceptions import (
 )
 from llm_gateway.providers.base import LLMProvider
 from llm_gateway.registry import build_provider, list_providers, register_provider
+from llm_gateway.testing import FakeCall, FakeLLMProvider
 from llm_gateway.types import LLMMessage, LLMResponse, TokenUsage
 
 __all__ = [
     "CLINotFoundError",
     "CostLimitExceededError",
     "CostTracker",
+    "FakeCall",
+    "FakeLLMProvider",
     "GatewayConfig",
     "GatewayError",
     "LLMClient",
