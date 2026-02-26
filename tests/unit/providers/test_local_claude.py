@@ -197,12 +197,25 @@ class TestLocalClaudeProvider:
             provider = LocalClaudeProvider()
         await provider.close()  # Should not raise
 
-    def test_estimate_usage_heuristic(self) -> None:
-        """_estimate_usage returns positive token counts with zero cost."""
+    def test_build_usage_heuristic_fallback(self) -> None:
+        """_build_usage falls back to heuristic when wrapper has no usage data."""
         from llm_gateway.providers.local_claude import LocalClaudeProvider
 
-        usage = LocalClaudeProvider._estimate_usage("hello world", '{"answer": "ok"}')
+        usage = LocalClaudeProvider._build_usage("hello world", '{"answer": "ok"}', {})
         assert usage.input_tokens > 0
         assert usage.output_tokens > 0
         assert usage.input_cost_usd == 0.0
         assert usage.output_cost_usd == 0.0
+
+    def test_build_usage_from_wrapper(self) -> None:
+        """_build_usage extracts real token counts from wrapper metadata."""
+        from llm_gateway.providers.local_claude import LocalClaudeProvider
+
+        wrapper: dict[str, object] = {
+            "usage": {"input_tokens": 100, "output_tokens": 50},
+            "total_cost_usd": 0.01,
+        }
+        usage = LocalClaudeProvider._build_usage("prompt", "response", wrapper)
+        assert usage.input_tokens == 100
+        assert usage.output_tokens == 50
+        assert usage.total_cost_usd == pytest.approx(0.01, abs=0.001)
