@@ -1,0 +1,97 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "llm-gateway"
+dynamic = ["version"]
+description = "Production-ready, vendor-agnostic LLM gateway with config-driven provider switching, cost tracking, and observability."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [{ name = "Your Name", email = "you@example.com" }]
+keywords = ["llm", "gateway", "anthropic", "openai", "claude", "ai"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+    "Typing :: Typed",
+]
+dependencies = [
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "tenacity>=8.0",
+]
+
+[project.optional-dependencies]
+anthropic = ["anthropic>=0.40.0", "instructor>=1.0.0"]
+openai = ["openai>=1.0.0", "instructor>=1.0.0"]
+tracing = [
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-exporter-otlp>=1.20.0",
+]
+logging = ["structlog>=24.0.0"]
+all = ["llm-gateway[anthropic,tracing,logging]"]
+dev = [
+    "llm-gateway[all]",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=5.0",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "pre-commit",
+]
+docs = [
+    "mkdocs-material>=9.0",
+    "mkdocstrings[python]>=0.27",
+]
+
+[project.urls]
+Homepage = "https://github.com/YOUR_ORG/llm-gateway"
+Documentation = "https://YOUR_ORG.github.io/llm-gateway"
+Repository = "https://github.com/YOUR_ORG/llm-gateway"
+Changelog = "https://github.com/YOUR_ORG/llm-gateway/blob/main/CHANGELOG.md"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/llm_gateway"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "unit: fast, fully mocked unit tests",
+    "integration: tests requiring real provider access",
+]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 99
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["llm_gateway"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+packages = ["llm_gateway"]
+
+[[tool.mypy.overrides]]
+module = ["anthropic.*", "instructor.*", "opentelemetry.*", "structlog.*"]
+ignore_missing_imports = true

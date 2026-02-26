@@ -1,0 +1,39 @@
+site_name: llm-gateway
+site_description: Production-ready, vendor-agnostic LLM gateway
+repo_url: https://github.com/YOUR_ORG/llm-gateway
+theme:
+  name: material
+  palette:
+    scheme: slate
+    primary: indigo
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - content.code.copy
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: true
+            show_root_heading: true
+
+nav:
+  - Home: index.md
+  - Quick Start: quickstart.md
+  - Configuration: configuration.md
+  - Providers: providers.md
+  - Cost Tracking: cost-tracking.md
+  - Observability: observability.md
+  - Custom Providers: custom-providers.md
+
+markdown_extensions:
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - toc:
+      permalink: true
