@@ -35,6 +35,8 @@ T = TypeVar("T")
 class AnthropicProvider:
     """LLM provider backed by the Anthropic API via instructor."""
 
+    DEFAULT_MODEL = "claude-sonnet-4-5-20250514"
+
     def __init__(
         self,
         api_key: str,
@@ -64,11 +66,12 @@ class AnthropicProvider:
         self,
         messages: Sequence[LLMMessage],
         response_model: type[T],
-        model: str,
+        model: str | None = None,
         max_tokens: int = 4096,
         temperature: float = 0.0,
     ) -> LLMResponse[T]:
         """Call Anthropic API and return structured response with usage."""
+        effective_model = model or self.DEFAULT_MODEL
         start = time.monotonic()
 
         @retry(
@@ -78,7 +81,7 @@ class AnthropicProvider:
         )
         async def _do_call() -> T:
             result: T = await self._instructor.messages.create(  # type: ignore[type-var]
-                model=model,
+                model=effective_model,
                 max_tokens=max_tokens,
                 temperature=temperature,
                 messages=list(messages),  # type: ignore[arg-type]
@@ -92,12 +95,12 @@ class AnthropicProvider:
             raise ProviderError("anthropic", exc) from exc
 
         latency_ms = (time.monotonic() - start) * 1000
-        usage = self._extract_usage(result, model)
+        usage = self._extract_usage(result, effective_model)
 
         return LLMResponse(
             content=result,
             usage=usage,
-            model=model,
+            model=effective_model,
             provider="anthropic",
             latency_ms=latency_ms,
         )

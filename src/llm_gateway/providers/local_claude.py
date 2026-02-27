@@ -114,6 +114,9 @@ class LocalClaudeProvider:
     prompt-embedded schema instructions.
     """
 
+    # Default model for local Claude CLI when none is explicitly configured.
+    DEFAULT_MODEL = "claude-haiku-4-5-20251001"
+
     def __init__(self, timeout_seconds: int = 120) -> None:
         self._timeout = timeout_seconds
         self._claude_path = shutil.which("claude")
@@ -129,11 +132,12 @@ class LocalClaudeProvider:
         self,
         messages: Sequence[LLMMessage],
         response_model: type[T],
-        model: str,
+        model: str | None = None,
         max_tokens: int = 4096,
         temperature: float = 0.0,
     ) -> LLMResponse[T]:
         """Run claude CLI and parse structured output."""
+        effective_model = model or self.DEFAULT_MODEL
         prompt = self._build_prompt(messages, response_model)
 
         # Build JSON schema string for --json-schema flag
@@ -143,7 +147,7 @@ class LocalClaudeProvider:
 
         logger.debug(
             "claude_cli_request | model=%s response_model=%s prompt_length=%d\n%s",
-            model,
+            effective_model,
             response_model.__name__,
             len(prompt),
             prompt[:500],
@@ -153,6 +157,7 @@ class LocalClaudeProvider:
         try:
             result_text, wrapper_meta = await self._run_cli(
                 prompt,
+                model=effective_model,
                 json_schema=json_schema,
             )
         except Exception as exc:
@@ -195,7 +200,7 @@ class LocalClaudeProvider:
         return LLMResponse(
             content=content,
             usage=usage,
-            model=model,
+            model=effective_model,
             provider="local_claude",
             latency_ms=latency_ms,
         )
@@ -237,9 +242,13 @@ class LocalClaudeProvider:
         self,
         prompt: str,
         *,
+        model: str | None = None,
         json_schema: str | None = None,
     ) -> tuple[str, dict[str, object]]:
         """Execute the claude CLI and return (result_text, wrapper_metadata).
+
+        When *model* is provided the ``--model`` flag selects which Claude
+        model the CLI uses (e.g. ``claude-haiku-4-5-20251001``).
 
         When *json_schema* is provided the ``--json-schema`` flag is passed to
         the CLI, enabling native structured-output validation.  The validated
@@ -257,6 +266,8 @@ class LocalClaudeProvider:
             "--output-format",
             "json",
         ]
+        if model is not None:
+            cmd.extend(["--model", model])
         if json_schema is not None:
             cmd.extend(["--json-schema", json_schema])
 

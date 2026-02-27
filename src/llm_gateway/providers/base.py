@@ -22,7 +22,7 @@ class LLMProvider(Protocol):
         self,
         messages: Sequence[LLMMessage],
         response_model: type[T],
-        model: str,
+        model: str | None = None,
         max_tokens: int = 4096,
         temperature: float = 0.0,
     ) -> LLMResponse[T]:
@@ -31,7 +31,7 @@ class LLMProvider(Protocol):
         Args:
             messages: Conversation messages.
             response_model: Pydantic model class for structured output.
-            model: Model identifier.
+            model: Model identifier. ``None`` means the provider picks its default.
             max_tokens: Maximum tokens in the response.
             temperature: Sampling temperature.
 

@@ -89,7 +89,7 @@ def disable_tracing() -> None:
 
 @asynccontextmanager
 async def traced_llm_call(
-    model: str,
+    model: str | None,
     provider: str,
     operation: str = "llm.complete",
 ) -> AsyncGenerator[dict[str, Any], None]:
@@ -112,7 +112,7 @@ async def traced_llm_call(
         return
 
     with _tracer.start_as_current_span(operation) as span:
-        span.set_attribute("llm.model", model)
+        span.set_attribute("llm.model", model or "provider-default")
         span.set_attribute("llm.provider", provider)
 
         try:

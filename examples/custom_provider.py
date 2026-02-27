@@ -29,16 +29,17 @@ class EchoProvider:
         self,
         messages: Sequence[LLMMessage],
         response_model: type[T],
-        model: str,
+        model: str | None = None,
         max_tokens: int = 4096,
         temperature: float = 0.0,
     ) -> LLMResponse[T]:
+        effective_model = model or "echo-v1"
         last_msg = messages[-1]["content"] if messages else "empty"
         content = response_model.model_validate({"text": f"Echo: {last_msg}"})  # type: ignore[attr-defined]
         return LLMResponse(
             content=content,
             usage=TokenUsage(input_tokens=len(str(messages)), output_tokens=len(str(content))),
-            model=model,
+            model=effective_model,
             provider="echo",
         )
 

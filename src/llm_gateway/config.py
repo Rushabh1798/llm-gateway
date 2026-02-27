@@ -22,9 +22,12 @@ class GatewayConfig(BaseSettings):
         default="anthropic",
         description="Provider name: 'anthropic', 'local_claude', 'openai', etc.",
     )
-    model: str = Field(
-        default="claude-sonnet-4-5-20250514",
-        description="Model identifier passed to the provider.",
+    model: str | None = Field(
+        default=None,
+        description=(
+            "Model identifier passed to the provider. "
+            "When unset, each provider uses its own default."
+        ),
     )
     api_key: SecretStr | None = Field(
         default=None,

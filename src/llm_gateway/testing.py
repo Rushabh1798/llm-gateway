@@ -81,11 +81,13 @@ class FakeLLMProvider:
         """Pre-configure a response for a specific ``response_model`` class."""
         self._responses[response_model] = response
 
+    DEFAULT_MODEL = "fake-model"
+
     async def complete(
         self,
         messages: Sequence[LLMMessage],
         response_model: type[T],
-        model: str,
+        model: str | None = None,
         max_tokens: int = 4096,
         temperature: float = 0.0,
     ) -> LLMResponse[T]:
@@ -94,7 +96,7 @@ class FakeLLMProvider:
         Args:
             messages: Conversation messages.
             response_model: Pydantic model class for structured output.
-            model: Model identifier.
+            model: Model identifier. ``None`` uses ``DEFAULT_MODEL``.
             max_tokens: Maximum tokens in the response.
             temperature: Sampling temperature.
 
@@ -105,6 +107,7 @@ class FakeLLMProvider:
             ResponseValidationError: If no response is configured and no factory
                 is provided.
         """
+        effective_model = model or self.DEFAULT_MODEL
         content: T | None = None
 
         # 1. Pre-configured response (exact type match)
@@ -125,7 +128,7 @@ class FakeLLMProvider:
             )
 
         usage = build_token_usage(
-            model,
+            effective_model,
             self._default_input_tokens,
             self._default_output_tokens,
         )
@@ -133,7 +136,7 @@ class FakeLLMProvider:
         response = LLMResponse(
             content=content,
             usage=usage,
-            model=model,
+            model=effective_model,
             provider="fake",
             latency_ms=0.0,
         )
@@ -142,7 +145,7 @@ class FakeLLMProvider:
             FakeCall(
                 messages=messages,
                 response_model=response_model,
-                model=model,
+                model=effective_model,
                 response=content,
             )
         )
