@@ -10,6 +10,11 @@ from pydantic import BaseModel
 
 from llm_gateway.config import GatewayConfig
 from llm_gateway.exceptions import CLINotFoundError, ProviderError, ResponseValidationError
+from llm_gateway.providers.local_claude import (
+    _extract_json_object,
+    _strip_ansi,
+    _unwrap_cli_envelope,
+)
 from llm_gateway.types import LLMResponse
 
 
@@ -219,3 +224,211 @@ class TestLocalClaudeProvider:
         assert usage.input_tokens == 100
         assert usage.output_tokens == 50
         assert usage.total_cost_usd == pytest.approx(0.01, abs=0.001)
+
+    @pytest.mark.asyncio
+    async def test_complete_uses_structured_output(self) -> None:
+        """structured_output from --json-schema is preferred over result parsing."""
+        from llm_gateway.providers.local_claude import LocalClaudeProvider
+
+        with patch("shutil.which", return_value="/usr/bin/claude"):
+            provider = LocalClaudeProvider()
+
+        wrapper = {
+            "type": "result",
+            "result": "some text that is not JSON",
+            "structured_output": {"answer": "from_schema"},
+            "session_id": "abc",
+            "errors": [],
+        }
+        json_output = json.dumps(wrapper)
+
+        mock_proc = AsyncMock()
+        mock_proc.communicate = AsyncMock(
+            return_value=(json_output.encode(), b""),
+        )
+        mock_proc.returncode = 0
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            resp = await provider.complete(
+                messages=[{"role": "user", "content": "test"}],
+                response_model=_TestModel,
+                model="local",
+            )
+
+        assert resp.content.answer == "from_schema"
+
+    @pytest.mark.asyncio
+    async def test_complete_passes_json_schema_flag(self) -> None:
+        """--json-schema flag is passed to the CLI subprocess."""
+        from llm_gateway.providers.local_claude import LocalClaudeProvider
+
+        with patch("shutil.which", return_value="/usr/bin/claude"):
+            provider = LocalClaudeProvider()
+
+        wrapper = {"result": json.dumps({"answer": "ok"})}
+        json_output = json.dumps(wrapper)
+
+        mock_proc = AsyncMock()
+        mock_proc.communicate = AsyncMock(
+            return_value=(json_output.encode(), b""),
+        )
+        mock_proc.returncode = 0
+
+        captured_cmd: list[str] = []
+
+        async def capture_exec(*args: str, **kwargs: object) -> AsyncMock:
+            captured_cmd.extend(args)
+            return mock_proc
+
+        with patch("asyncio.create_subprocess_exec", side_effect=capture_exec):
+            await provider.complete(
+                messages=[{"role": "user", "content": "test"}],
+                response_model=_TestModel,
+                model="local",
+            )
+
+        assert "--json-schema" in captured_cmd
+
+    @pytest.mark.asyncio
+    async def test_run_cli_strips_ansi_codes(self) -> None:
+        """ANSI escape codes in stdout are stripped before JSON parsing."""
+        from llm_gateway.providers.local_claude import LocalClaudeProvider
+
+        with patch("shutil.which", return_value="/usr/bin/claude"):
+            provider = LocalClaudeProvider()
+
+        # Wrap valid JSON with ANSI codes
+        wrapper = {"result": json.dumps({"answer": "clean"})}
+        ansi_output = f"\x1b[32m{json.dumps(wrapper)}\x1b[0m"
+
+        mock_proc = AsyncMock()
+        mock_proc.communicate = AsyncMock(
+            return_value=(ansi_output.encode(), b""),
+        )
+        mock_proc.returncode = 0
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            resp = await provider.complete(
+                messages=[{"role": "user", "content": "test"}],
+                response_model=_TestModel,
+                model="local",
+            )
+
+        assert resp.content.answer == "clean"
+
+    def test_parse_response_unwraps_leaked_envelope(self) -> None:
+        """_parse_response detects a leaked CLI wrapper and extracts result."""
+        from llm_gateway.providers.local_claude import LocalClaudeProvider
+
+        # Simulate the exact error case: full wrapper JSON reaches _parse_response
+        wrapper = {
+            "type": "result",
+            "subtype": "success",
+            "result": json.dumps({"answer": "extracted"}),
+            "session_id": "test-session-f66eedad",
+            "errors": [],
+        }
+        raw = json.dumps(wrapper)
+
+        result = LocalClaudeProvider._parse_response(raw, _TestModel)
+        assert isinstance(result, _TestModel)
+        assert result.answer == "extracted"
+
+    def test_parse_cli_json_jsonl_format(self) -> None:
+        """_parse_cli_json handles JSONL with multiple lines."""
+        from llm_gateway.providers.local_claude import LocalClaudeProvider
+
+        lines = [
+            json.dumps({"type": "assistant", "content": "thinking..."}),
+            json.dumps(
+                {
+                    "type": "result",
+                    "result": '{"answer":"ok"}',
+                    "session_id": "s1",
+                }
+            ),
+        ]
+        text = "\n".join(lines)
+
+        wrapper = LocalClaudeProvider._parse_cli_json(text)
+        assert wrapper is not None
+        assert wrapper["type"] == "result"
+        assert wrapper["result"] == '{"answer":"ok"}'
+
+    def test_parse_cli_json_noisy_output(self) -> None:
+        """_parse_cli_json extracts JSON from noisy stdout with prefix text."""
+        from llm_gateway.providers.local_claude import LocalClaudeProvider
+
+        noisy = 'Loading config...\n{"result": "hello", "type": "result"}\n'
+        wrapper = LocalClaudeProvider._parse_cli_json(noisy)
+        assert wrapper is not None
+        assert wrapper["result"] == "hello"
+
+
+@pytest.mark.unit
+class TestHelperFunctions:
+    """Tests for module-level helper functions."""
+
+    def test_strip_ansi_removes_codes(self) -> None:
+        """_strip_ansi removes ANSI escape sequences."""
+        assert _strip_ansi("\x1b[32mhello\x1b[0m") == "hello"
+        assert _strip_ansi("no codes") == "no codes"
+
+    def test_extract_json_object_basic(self) -> None:
+        """_extract_json_object finds a balanced JSON object."""
+        assert _extract_json_object('prefix {"a": 1} suffix') == '{"a": 1}'
+
+    def test_extract_json_object_nested(self) -> None:
+        """_extract_json_object handles nested braces."""
+        text = 'x {"a": {"b": 2}} y'
+        assert _extract_json_object(text) == '{"a": {"b": 2}}'
+
+    def test_extract_json_object_with_strings(self) -> None:
+        """_extract_json_object ignores braces inside strings."""
+        text = '{"a": "x{y}z"}'
+        assert _extract_json_object(text) == '{"a": "x{y}z"}'
+
+    def test_extract_json_object_no_json(self) -> None:
+        """_extract_json_object returns None when no JSON found."""
+        assert _extract_json_object("no json here") is None
+
+    def test_unwrap_cli_envelope_extracts_result(self) -> None:
+        """_unwrap_cli_envelope extracts result from wrapper."""
+        wrapper = json.dumps(
+            {
+                "type": "result",
+                "session_id": "s1",
+                "errors": [],
+                "result": '{"answer": "42"}',
+            }
+        )
+        assert _unwrap_cli_envelope(wrapper) == '{"answer": "42"}'
+
+    def test_unwrap_cli_envelope_prefers_structured_output(self) -> None:
+        """_unwrap_cli_envelope prefers structured_output over result."""
+        wrapper = json.dumps(
+            {
+                "type": "result",
+                "session_id": "s1",
+                "errors": [],
+                "result": "raw text",
+                "structured_output": {"answer": "validated"},
+            }
+        )
+        unwrapped = _unwrap_cli_envelope(wrapper)
+        assert json.loads(unwrapped) == {"answer": "validated"}
+
+    def test_unwrap_cli_envelope_passthrough_normal_json(self) -> None:
+        """_unwrap_cli_envelope passes through non-wrapper JSON."""
+        normal = '{"answer": "42"}'
+        assert _unwrap_cli_envelope(normal) == normal
+
+    def test_unwrap_cli_envelope_passthrough_non_json(self) -> None:
+        """_unwrap_cli_envelope passes through non-JSON text."""
+        assert _unwrap_cli_envelope("not json") == "not json"
+
+    def test_extract_json_object_escaped_quotes(self) -> None:
+        """_extract_json_object handles escaped quotes in strings."""
+        text = r'{"a": "he said \"hi\""}'
+        result = _extract_json_object(text)
+        assert result == text

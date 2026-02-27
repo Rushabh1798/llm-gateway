@@ -184,9 +184,9 @@ class TestLiveUsageTracking:
         assert resp.usage.input_tokens > 0
         assert resp.usage.output_tokens > 0
         assert resp.usage.total_tokens > 0
-        # Local claude has zero cost (no API fees)
-        assert resp.usage.input_cost_usd == 0.0
-        assert resp.usage.output_cost_usd == 0.0
+        # Cost may be reported from CLI wrapper metadata
+        assert resp.usage.input_cost_usd >= 0.0
+        assert resp.usage.output_cost_usd >= 0.0
         logger.info(
             "[LIVE] usage_positive_tokens | %d in / %d out",
             resp.usage.input_tokens,

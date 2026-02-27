@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shutil
 import time
 from collections.abc import Sequence
@@ -24,12 +25,93 @@ logger = logging.getLogger(__name__)
 # Rough estimate: 1 token ≈ 4 characters (for heuristic usage tracking)
 _CHARS_PER_TOKEN = 4
 
+# ANSI escape sequence pattern (colors, cursor movement, etc.)
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
+
+# Keys that identify a Claude CLI JSON wrapper (not LLM content)
+_WRAPPER_KEYS = {"type", "session_id", "errors"}
+
+
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI escape sequences from text."""
+    return _ANSI_RE.sub("", text)
+
+
+def _extract_json_object(text: str) -> str | None:
+    """Find the outermost JSON object ``{...}`` in *text*.
+
+    Returns the substring from the first ``{`` to the matching ``}``,
+    or ``None`` if no balanced pair is found.
+    """
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    in_str = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            escape = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
+def _unwrap_cli_envelope(text: str) -> str:
+    """If *text* is a JSON-encoded CLI wrapper, return the ``result`` value.
+
+    The Claude CLI ``--output-format json`` wraps the LLM response in an
+    envelope like ``{"type":"result", "result":"...", ...}``.  If the raw
+    text reaching ``_parse_response`` is such an envelope (e.g. because
+    ``_run_cli`` hit the fallback path), this function extracts the actual
+    LLM content so Pydantic validates the right thing.
+    """
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return text
+
+    if not isinstance(data, dict):
+        return text
+
+    # Heuristic: a CLI wrapper has ``type`` and at least one other
+    # wrapper-specific key (``session_id``, ``errors``).
+    if not _WRAPPER_KEYS.issubset(data.keys()):
+        return text
+
+    # Prefer ``structured_output`` (from --json-schema), then ``result``
+    for key in ("structured_output", "result"):
+        value = data.get(key)
+        if value is None:
+            continue
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            return json.dumps(value)
+
+    return text
+
 
 class LocalClaudeProvider:
     """LLM provider that delegates to the local ``claude`` CLI binary.
 
-    Structured output is achieved by embedding the JSON schema in the
-    prompt and requesting JSON-only output via ``--output-format json``.
+    Structured output is achieved by passing ``--json-schema`` with the
+    Pydantic model's JSON schema (preferred) and falling back to
+    prompt-embedded schema instructions.
     """
 
     def __init__(self, timeout_seconds: int = 120) -> None:
@@ -53,6 +135,12 @@ class LocalClaudeProvider:
     ) -> LLMResponse[T]:
         """Run claude CLI and parse structured output."""
         prompt = self._build_prompt(messages, response_model)
+
+        # Build JSON schema string for --json-schema flag
+        json_schema: str | None = None
+        if issubclass(response_model, BaseModel):
+            json_schema = json.dumps(response_model.model_json_schema())
+
         logger.debug(
             "claude_cli_request | model=%s response_model=%s prompt_length=%d\n%s",
             model,
@@ -63,15 +151,31 @@ class LocalClaudeProvider:
         start = time.monotonic()
 
         try:
-            result_text, wrapper_meta = await self._run_cli(prompt)
+            result_text, wrapper_meta = await self._run_cli(
+                prompt,
+                json_schema=json_schema,
+            )
         except Exception as exc:
             logger.error("claude_cli_error | %s: %s", type(exc).__name__, exc)
             raise ProviderError("local_claude", exc) from exc
 
         latency_ms = (time.monotonic() - start) * 1000
 
-        # Parse and validate the response
-        content = self._parse_response(result_text, response_model)
+        # Prefer structured_output from --json-schema (already validated by CLI)
+        content: T | None = None
+        structured = wrapper_meta.get("structured_output")
+        if structured is not None and issubclass(response_model, BaseModel):
+            try:
+                if isinstance(structured, dict):
+                    content = response_model.model_validate(structured)  # type: ignore[assignment]
+                elif isinstance(structured, str):
+                    content = response_model.model_validate_json(structured)  # type: ignore[assignment]
+            except Exception:
+                logger.debug("structured_output_parse_failed, falling back to result")
+
+        if content is None:
+            content = self._parse_response(result_text, response_model)
+
         usage = self._build_usage(prompt, result_text, wrapper_meta)
 
         if isinstance(content, BaseModel):
@@ -129,21 +233,35 @@ class LocalClaudeProvider:
 
         return "\n\n".join(parts)
 
-    async def _run_cli(self, prompt: str) -> tuple[str, dict[str, object]]:
-        """Execute the claude CLI and return (result_text, wrapper_metadata)."""
+    async def _run_cli(
+        self,
+        prompt: str,
+        *,
+        json_schema: str | None = None,
+    ) -> tuple[str, dict[str, object]]:
+        """Execute the claude CLI and return (result_text, wrapper_metadata).
+
+        When *json_schema* is provided the ``--json-schema`` flag is passed to
+        the CLI, enabling native structured-output validation.  The validated
+        object is returned under the ``structured_output`` key in the wrapper.
+        """
         assert self._claude_path is not None
 
         # Strip CLAUDECODE env var to allow running inside a Claude Code session
         env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
 
-        proc = await asyncio.create_subprocess_exec(
+        cmd: list[str] = [
             self._claude_path,
             "-p",
             prompt,
             "--output-format",
             "json",
-            "--max-turns",
-            "1",
+        ]
+        if json_schema is not None:
+            cmd.extend(["--json-schema", json_schema])
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=env,
@@ -170,10 +288,14 @@ class LocalClaudeProvider:
             msg = f"Claude CLI exited with code {proc.returncode}: {stderr_text}"
             raise RuntimeError(msg)
 
-        # claude --output-format json wraps result in {"result": "...", ...}
-        try:
-            wrapper = json.loads(stdout_text)
-            if isinstance(wrapper, dict) and "result" in wrapper:
+        # Strip ANSI escape codes that may leak into stdout
+        stdout_clean = _strip_ansi(stdout_text)
+
+        wrapper = self._parse_cli_json(stdout_clean)
+        if wrapper is not None:
+            is_cli_wrapper = _WRAPPER_KEYS.issubset(wrapper.keys())
+
+            if "result" in wrapper:
                 result_text = str(wrapper["result"])
                 logger.debug(
                     "claude_cli_raw_result | duration=%dms cost=$%.6f\n%s",
@@ -182,13 +304,70 @@ class LocalClaudeProvider:
                     result_text[:2000],
                 )
                 return result_text, wrapper
+
+            if is_cli_wrapper:
+                # CLI wrapper parsed but no result field (e.g. error_max_turns).
+                # Return empty text but preserve wrapper for cost data.
+                subtype = wrapper.get("subtype", "unknown")
+                logger.warning(
+                    "claude_cli_no_result | subtype=%s wrapper_keys=%s",
+                    subtype,
+                    sorted(wrapper.keys()),
+                )
+                return "", wrapper
+
+        logger.debug(
+            "claude_cli_raw_fallback | stdout_length=%d\n%s",
+            len(stdout_clean),
+            stdout_clean[:1000],
+        )
+        return stdout_clean, {}
+
+    @staticmethod
+    def _parse_cli_json(text: str) -> dict[str, object] | None:
+        """Parse the CLI JSON wrapper from *text*.
+
+        Handles three failure modes:
+        1. Clean JSON — ``json.loads`` succeeds directly.
+        2. Noisy stdout — non-JSON content before/after the JSON object
+           (ANSI remnants, BOM, logging lines).  Falls back to extracting
+           the outermost ``{...}`` substring.
+        3. JSONL (newline-delimited) — multiple JSON objects on separate
+           lines.  Scans for the last ``type=result`` object.
+        """
+        # Fast path: clean JSON (single object)
+        try:
+            data = json.loads(text)
+            if isinstance(data, dict):
+                return data
         except (json.JSONDecodeError, TypeError):
             pass
 
-        logger.debug(
-            "claude_cli_raw_fallback | stdout_length=%d\n%s", len(stdout_text), stdout_text[:1000]
-        )
-        return stdout_text, {}
+        # JSONL: scan lines in reverse for the result object.
+        # This must run before _extract_json_object so that multi-line
+        # output picks the correct (result) object, not the first one.
+        for line in reversed(text.strip().split("\n")):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+                if isinstance(data, dict) and data.get("type") == "result":
+                    return data
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+        # Last resort: extract the outermost JSON object from noisy output
+        extracted = _extract_json_object(text)
+        if extracted is not None:
+            try:
+                data = json.loads(extracted)
+                if isinstance(data, dict):
+                    return data
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        return None
 
     @staticmethod
     def _parse_response(raw: str, response_model: type[T]) -> T:
@@ -211,6 +390,11 @@ class LocalClaudeProvider:
                     json_lines.append(line)
             if json_lines:
                 cleaned = "\n".join(json_lines)
+
+        # Safety check: detect if cleaned text is a CLI wrapper that
+        # leaked through (e.g. _run_cli fallback returned raw stdout).
+        # If so, extract the ``result`` field from it before validating.
+        cleaned = _unwrap_cli_envelope(cleaned)
 
         # Try direct JSON parsing (no code block wrapper)
         try:
