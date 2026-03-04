@@ -11,11 +11,13 @@ from llm_gateway.exceptions import ProviderInitError, ProviderNotFoundError
 if TYPE_CHECKING:
     from llm_gateway.config import GatewayConfig
     from llm_gateway.providers.base import LLMProvider
+    from llm_gateway.providers.image_base import ImageGenerationProvider
 
 logger = logging.getLogger(__name__)
 
 # Global registry: name → factory(config) → provider instance
 _PROVIDERS: dict[str, Callable[[GatewayConfig], LLMProvider]] = {}
+_IMAGE_PROVIDERS: dict[str, Callable[[GatewayConfig], ImageGenerationProvider]] = {}
 
 
 def register_provider(
@@ -110,3 +112,75 @@ def _ensure_builtins_registered() -> None:
     from llm_gateway.testing import FakeLLMProvider
 
     register_provider("fake", FakeLLMProvider.from_config)
+
+
+# ── Image Provider Registry ────────────────────────────────────
+
+
+def register_image_provider(
+    name: str,
+    factory: Callable[[GatewayConfig], ImageGenerationProvider],
+) -> None:
+    """Register an image generation provider factory.
+
+    Args:
+        name: Provider name (e.g. "openai_image", "fake_image").
+        factory: Callable that takes GatewayConfig and returns an ImageGenerationProvider.
+    """
+    _IMAGE_PROVIDERS[name] = factory
+    logger.debug("Registered image provider: %s", name)
+
+
+def build_image_provider(config: GatewayConfig) -> ImageGenerationProvider:
+    """Build an image provider instance from configuration.
+
+    Args:
+        config: Gateway configuration with image_provider name.
+
+    Returns:
+        An initialized ImageGenerationProvider instance.
+
+    Raises:
+        ProviderNotFoundError: If the image provider name is not registered.
+        ProviderInitError: If the provider factory raises an error.
+    """
+    _ensure_image_builtins_registered()
+
+    factory = _IMAGE_PROVIDERS.get(config.image_provider)
+    if factory is None:
+        raise ProviderNotFoundError(config.image_provider)
+
+    try:
+        return factory(config)
+    except Exception as exc:
+        raise ProviderInitError(config.image_provider, str(exc)) from exc
+
+
+def list_image_providers() -> list[str]:
+    """Return names of all registered image providers."""
+    _ensure_image_builtins_registered()
+    return list(_IMAGE_PROVIDERS.keys())
+
+
+_image_builtins_registered = False
+
+
+def _ensure_image_builtins_registered() -> None:
+    """Lazily register built-in image providers on first use."""
+    global _image_builtins_registered
+    if _image_builtins_registered:
+        return
+    _image_builtins_registered = True
+
+    # OpenAI Image
+    try:
+        from llm_gateway.providers.openai_image import OpenAIImageProvider
+
+        register_image_provider("openai_image", OpenAIImageProvider.from_config)
+    except ImportError:
+        logger.debug("openai extras not installed — image provider not available")
+
+    # Fake (testing) — always available
+    from llm_gateway.testing import FakeImageProvider
+
+    register_image_provider("fake_image", FakeImageProvider.from_config)

@@ -265,6 +265,11 @@ class LocalClaudeProvider:
             prompt,
             "--output-format",
             "json",
+            "--no-session-persistence",
+            "--tools",
+            "",
+            "--max-budget-usd",
+            "5.00",
         ]
         if model is not None:
             cmd.extend(["--model", model])
@@ -273,6 +278,7 @@ class LocalClaudeProvider:
 
         proc = await asyncio.create_subprocess_exec(
             *cmd,
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=env,

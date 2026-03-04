@@ -8,6 +8,41 @@ from typing import Generic, Literal, TypedDict, TypeVar
 T = TypeVar("T")
 
 
+# ── Image Generation Types ─────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class ImageTokenUsage:
+    """Cost tracking for image generation calls."""
+
+    prompt_tokens: int = 0
+    total_cost_usd: float = 0.0
+
+
+@dataclass
+class ImageData:
+    """A single generated image."""
+
+    url: str | None = None
+    b64_json: str | None = None
+    revised_prompt: str = ""
+
+
+@dataclass
+class ImageGenerationResponse:
+    """Standardized response from any image generation provider."""
+
+    images: list[ImageData]
+    usage: ImageTokenUsage
+    model: str
+    provider: str
+    latency_ms: float = 0.0
+    metadata: dict[str, object] = field(default_factory=dict)
+
+
+# ── LLM Types ──────────────────────────────────────────────────
+
+
 @dataclass(frozen=True)
 class TokenUsage:
     """Token counts and associated costs for a single LLM call."""

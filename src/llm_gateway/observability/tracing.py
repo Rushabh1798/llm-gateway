@@ -7,7 +7,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from llm_gateway.types import LLMResponse
+from llm_gateway.types import ImageGenerationResponse, LLMResponse
 
 logger = logging.getLogger(__name__)
 
@@ -130,3 +130,41 @@ async def traced_llm_call(
                 span.set_attribute("llm.total_tokens", response.usage.total_tokens)
                 span.set_attribute("llm.cost_usd", response.usage.total_cost_usd)
                 span.set_attribute("llm.latency_ms", response.latency_ms)
+
+
+@asynccontextmanager
+async def traced_image_call(
+    model: str | None,
+    provider: str,
+    operation: str = "image.generate",
+) -> AsyncGenerator[dict[str, Any], None]:
+    """Context manager that creates an OTEL span for an image generation call.
+
+    Usage::
+
+        async with traced_image_call("gpt-image-1", "openai_image") as span_data:
+            response = await provider.generate_image(...)
+            span_data["response"] = response
+    """
+    span_data: dict[str, Any] = {}
+
+    if _tracer is None:
+        yield span_data
+        return
+
+    with _tracer.start_as_current_span(operation) as span:
+        span.set_attribute("image.model", model or "provider-default")
+        span.set_attribute("image.provider", provider)
+
+        try:
+            yield span_data
+        except Exception as exc:
+            span.set_status(trace.StatusCode.ERROR, str(exc))
+            span.record_exception(exc)
+            raise
+        else:
+            response = span_data.get("response")
+            if response is not None and isinstance(response, ImageGenerationResponse):
+                span.set_attribute("image.num_images", len(response.images))
+                span.set_attribute("image.cost_usd", response.usage.total_cost_usd)
+                span.set_attribute("image.latency_ms", response.latency_ms)

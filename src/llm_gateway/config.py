@@ -38,6 +38,16 @@ class GatewayConfig(BaseSettings):
         description="Optional base URL override for the provider API.",
     )
 
+    # ── Image Provider ─────────────────────────────────────────
+    image_provider: str = Field(
+        default="fake_image",
+        description="Image provider name: 'openai_image', 'fake_image', etc.",
+    )
+    image_model: str | None = Field(
+        default=None,
+        description="Image model identifier. When unset, each provider uses its default.",
+    )
+
     # ── Request defaults ────────────────────────────────────────
     max_tokens: int = Field(default=4096, ge=1)
     max_retries: int = Field(default=3, ge=0)

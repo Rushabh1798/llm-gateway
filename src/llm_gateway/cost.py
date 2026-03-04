@@ -6,7 +6,7 @@ import logging
 from typing import Any
 
 from llm_gateway.exceptions import CostLimitExceededError
-from llm_gateway.types import TokenUsage
+from llm_gateway.types import ImageTokenUsage, TokenUsage
 
 logger = logging.getLogger(__name__)
 
@@ -137,5 +137,150 @@ class CostTracker:
         self._total_input_tokens = 0
         self._total_output_tokens = 0
         self._total_cost_usd = 0.0
+        self._call_count = 0
+        self._warned = False
+
+
+# ── Image Pricing Registry ─────────────────────────────────────
+
+# model → quality → size → cost_per_image_usd
+_IMAGE_PRICING: dict[str, dict[str, dict[str, float]]] = {
+    "gpt-image-1": {
+        "low": {"1024x1024": 0.011, "1024x1536": 0.016, "1536x1024": 0.016, "auto": 0.011},
+        "medium": {"1024x1024": 0.042, "1024x1536": 0.063, "1536x1024": 0.063, "auto": 0.042},
+        "high": {"1024x1024": 0.167, "1024x1536": 0.190, "1536x1024": 0.190, "auto": 0.167},
+    },
+    "dall-e-3": {
+        "standard": {"1024x1024": 0.040, "1024x1792": 0.080, "1792x1024": 0.080, "auto": 0.040},
+        "hd": {"1024x1024": 0.080, "1024x1792": 0.120, "1792x1024": 0.120, "auto": 0.080},
+    },
+    "dall-e-2": {
+        "standard": {"256x256": 0.016, "512x512": 0.018, "1024x1024": 0.020, "auto": 0.020},
+    },
+}
+
+
+def register_image_pricing(
+    model: str,
+    quality: str,
+    size: str,
+    cost_per_image_usd: float,
+) -> None:
+    """Register or update pricing for an image model.
+
+    Args:
+        model: Model identifier (e.g. "gpt-image-1").
+        quality: Quality tier (e.g. "standard", "hd", "low", "medium", "high").
+        size: Image size (e.g. "1024x1024").
+        cost_per_image_usd: Cost per generated image in USD.
+    """
+    if model not in _IMAGE_PRICING:
+        _IMAGE_PRICING[model] = {}
+    if quality not in _IMAGE_PRICING[model]:
+        _IMAGE_PRICING[model][quality] = {}
+    _IMAGE_PRICING[model][quality][size] = cost_per_image_usd
+
+
+def calculate_image_cost(
+    model: str,
+    quality: str = "standard",
+    size: str = "auto",
+    num_images: int = 1,
+) -> float:
+    """Calculate cost for image generation.
+
+    Returns:
+        Total cost in USD. 0.0 if model/quality/size unknown.
+    """
+    model_pricing = _IMAGE_PRICING.get(model)
+    if model_pricing is None:
+        return 0.0
+    quality_pricing = model_pricing.get(quality)
+    if quality_pricing is None:
+        return 0.0
+    per_image = quality_pricing.get(size, quality_pricing.get("auto", 0.0))
+    return per_image * num_images
+
+
+def build_image_usage(
+    model: str,
+    quality: str = "standard",
+    size: str = "auto",
+    num_images: int = 1,
+    prompt_tokens: int = 0,
+) -> ImageTokenUsage:
+    """Build an ImageTokenUsage with cost from the pricing registry."""
+    cost = calculate_image_cost(model, quality, size, num_images)
+    return ImageTokenUsage(prompt_tokens=prompt_tokens, total_cost_usd=cost)
+
+
+class ImageCostTracker:
+    """Accumulates image generation costs across multiple calls.
+
+    Supports cost guardrails (warn and hard limit).
+    """
+
+    def __init__(
+        self,
+        cost_limit_usd: float | None = None,
+        cost_warn_usd: float | None = None,
+    ) -> None:
+        self._cost_limit = cost_limit_usd
+        self._cost_warn = cost_warn_usd
+        self._total_cost_usd: float = 0.0
+        self._total_images: int = 0
+        self._call_count: int = 0
+        self._warned: bool = False
+
+    def record(self, usage: ImageTokenUsage) -> None:
+        """Record a single image generation call's usage and check guardrails."""
+        self._total_cost_usd += usage.total_cost_usd
+        self._call_count += 1
+        self._check_guardrails()
+
+    def record_images(self, count: int) -> None:
+        """Track total images generated."""
+        self._total_images += count
+
+    def _check_guardrails(self) -> None:
+        """Enforce cost warning and hard limit."""
+        if self._cost_warn and not self._warned and self._total_cost_usd >= self._cost_warn:
+            self._warned = True
+            logger.warning(
+                "Image cost warning threshold reached: $%.4f >= $%.4f",
+                self._total_cost_usd,
+                self._cost_warn,
+            )
+
+        if self._cost_limit and self._total_cost_usd >= self._cost_limit:
+            raise CostLimitExceededError(self._total_cost_usd, self._cost_limit)
+
+    @property
+    def total_cost_usd(self) -> float:
+        """Cumulative cost in USD."""
+        return self._total_cost_usd
+
+    @property
+    def total_images(self) -> int:
+        """Cumulative images generated."""
+        return self._total_images
+
+    @property
+    def call_count(self) -> int:
+        """Number of image generation calls recorded."""
+        return self._call_count
+
+    def summary(self) -> dict[str, Any]:
+        """Return a summary dict suitable for logging or span attributes."""
+        return {
+            "total_cost_usd": round(self._total_cost_usd, 6),
+            "total_images": self._total_images,
+            "call_count": self._call_count,
+        }
+
+    def reset(self) -> None:
+        """Reset all accumulators."""
+        self._total_cost_usd = 0.0
+        self._total_images = 0
         self._call_count = 0
         self._warned = False
